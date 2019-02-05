@@ -1,6 +1,6 @@
 # AreMyPhotosUploaded
 
-Scans a given directory for photos and looks for the same photos in your Google Photos account.
+Scans a given directory for photos and looks for the same photos in your Google Photos library.
 
 ## Setup
 
