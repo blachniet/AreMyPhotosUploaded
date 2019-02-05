@@ -32,17 +32,15 @@ import (
 	"google.golang.org/api/photoslibrary/v1"
 )
 
-var (
-	cacheDirname        string
-	oauthConfigFilename string
-	tokenFilename       string
-)
-
 // Problems:
 // photoslibrary doesn't expose the file name. I would need to compare
 // purely based on timestamps, and camera metadata. Maybe I could go
 // next-level and do some image comparisons, but that seems like overkill
 func main() {
+	if len(os.Args) < 2 {
+		log.Fatalf("You must provide 1 argument, the path to the directory containing pictures.")
+	}
+
 	dirname := os.Args[1]
 	ctx := context.Background()
 
@@ -51,12 +49,22 @@ func main() {
 		log.Fatalf("Error creating cache directory: %+v", err)
 	}
 
-	// Create a temporary output file
-	outputFile, err := ioutil.TempFile("", "armpup-*.html")
+	// Create a HTML report file
+	htmlFile, err := ioutil.TempFile("", "armpup-*.html")
 	if err != nil {
-		log.Fatalf("Error creating output file: %+v", err)
+		log.Fatalf("Error creating HTML report file: %+v", err)
 	}
-	defer outputFile.Close()
+	defer htmlFile.Close()
+
+	// Create a text file containing paths to all files that we get a match for
+	matchesFile, err := ioutil.TempFile("", "armpup-*.matches.txt")
+	if err != nil {
+		log.Fatalf("Error creating matches text file: %+v", err)
+	}
+	defer matchesFile.Close()
+
+	fmt.Printf("Report : %v\n", htmlFile.Name())
+	fmt.Printf("Matches: %v\n", matchesFile.Name())
 
 	// Get an HTTP client for talking to the Google Photos service
 	client, err := getClient(ctx)
@@ -74,7 +82,7 @@ func main() {
 		log.Fatalf("Error reading directory: %+v", err)
 	}
 
-	fmt.Fprintln(outputFile, htmlHeader)
+	fmt.Fprintln(htmlFile, htmlHeader)
 
 	for _, f := range files {
 		if f.IsDir() {
@@ -85,11 +93,11 @@ func main() {
 		exifDate, err := getExifDate(filename)
 		if err != nil {
 			// Missing EXIF data
-			fmt.Fprintf(outputFile, "<tr class=\"warning\">")
-			fmt.Fprintf(outputFile, "<td title=\"%v\">%v</td>", filename, f.Name())
-			fmt.Fprintf(outputFile, "<td><img src=\"%v\"></td>", filename)
-			fmt.Fprintf(outputFile, "<td>No EXIF date found.</td>")
-			fmt.Fprintln(outputFile, "</tr>")
+			fmt.Fprintf(htmlFile, "<tr class=\"warning\">")
+			fmt.Fprintf(htmlFile, "<td title=\"%v\">%v</td>", filename, f.Name())
+			fmt.Fprintf(htmlFile, "<td><img src=\"%v\"></td>", filename)
+			fmt.Fprintf(htmlFile, "<td>No EXIF date found.</td>")
+			fmt.Fprintln(htmlFile, "</tr>")
 		} else {
 			mediaItem, err := librarian.getPhotoByDate(ctx, exifDate)
 			if err != nil {
@@ -98,24 +106,25 @@ func main() {
 
 			if mediaItem == nil {
 				// No match found
-				fmt.Fprintf(outputFile, "<tr class=\"danger\">")
-				fmt.Fprintf(outputFile, "<td title=\"%v\">%v</td>", filename, f.Name())
-				fmt.Fprintf(outputFile, "<td><img src=\"%v\"></td>", filename)
-				fmt.Fprintf(outputFile, "<td>Not Found!</td>")
-				fmt.Fprintln(outputFile, "</tr>")
+				fmt.Fprintf(htmlFile, "<tr class=\"danger\">")
+				fmt.Fprintf(htmlFile, "<td title=\"%v\">%v</td>", filename, f.Name())
+				fmt.Fprintf(htmlFile, "<td><img src=\"%v\"></td>", filename)
+				fmt.Fprintf(htmlFile, "<td>Not Found!</td>")
+				fmt.Fprintln(htmlFile, "</tr>")
 			} else {
 				// Match found
-				fmt.Fprintf(outputFile, "<tr>")
-				fmt.Fprintf(outputFile, "<td title=\"%v\">%v</td>", filename, f.Name())
-				fmt.Fprintf(outputFile, "<td><img src=\"%v\">", filename)
-				fmt.Fprintf(outputFile, "<td><a href=\"%v\"><img src=\"%v\"></a>", mediaItem.ProductUrl, mediaItem.BaseUrl)
-				fmt.Fprintln(outputFile, "</tr>")
+				fmt.Fprintln(matchesFile, filename)
+
+				fmt.Fprintf(htmlFile, "<tr>")
+				fmt.Fprintf(htmlFile, "<td title=\"%v\">%v</td>", filename, f.Name())
+				fmt.Fprintf(htmlFile, "<td><img src=\"%v\">", filename)
+				fmt.Fprintf(htmlFile, "<td><a href=\"%v\"><img src=\"%v\"></a>", mediaItem.ProductUrl, mediaItem.BaseUrl)
+				fmt.Fprintln(htmlFile, "</tr>")
 			}
 		}
 	}
 
-	fmt.Fprintf(outputFile, htmlFooter)
-	fmt.Printf("Output written to %v\n", outputFile.Name())
+	fmt.Fprintf(htmlFile, htmlFooter)
 }
 
 func getExifDate(path string) (time.Time, error) {

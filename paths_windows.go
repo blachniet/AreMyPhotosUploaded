@@ -1,5 +1,3 @@
-// +build darwin linux
-
 package main
 
 import (
@@ -17,7 +15,7 @@ func init() {
 	cacheDir := os.Getenv("XDG_CACHE_HOME")
 
 	if cacheDir == "" {
-		cacheDir = path.Join(os.Getenv("HOME"), ".cache")
+		cacheDir = os.Getenv("LOCALAPPDATA")
 	}
 
 	cacheDirname = path.Join(cacheDir, "blachniet.com", "AreMyPhotosUploaded")
