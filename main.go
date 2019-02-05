@@ -1,20 +1,5 @@
 package main
 
-// gcloud projects create my-sample-photo-helper
-// gcloud config set project my-sample-photo-helper
-// gcloud services enable photoslibrary.googleapis.com
-//
-// # Create OAuth Client ID
-// # https://console.developers.google.com/apis/credentials/oauthclient
-//
-// # Configure consent screen - just fill out application name
-//
-// # Create "Other" OAuth client
-// # Copy Client ID and client secret
-//
-// Path to cache token file:
-//
-
 import (
 	"context"
 	"encoding/json"
