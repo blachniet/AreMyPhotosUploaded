@@ -5,3 +5,8 @@ go:
 
 env:
 - GO111MODULE=on
+
+os:
+- darwin
+- linux
+- windows
