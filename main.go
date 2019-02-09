@@ -17,10 +17,12 @@ import (
 	"google.golang.org/api/photoslibrary/v1"
 )
 
-// Problems:
-// photoslibrary doesn't expose the file name. I would need to compare
-// purely based on timestamps, and camera metadata. Maybe I could go
-// next-level and do some image comparisons, but that seems like overkill
+var (
+	cacheDirname        string
+	oauthConfigFilename string
+	tokenFilename       string
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("You must provide 1 argument, the path to the directory containing pictures.")
@@ -28,6 +30,9 @@ func main() {
 
 	dirname := os.Args[1]
 	ctx := context.Background()
+	cacheDirname = getCacheDirname()
+	oauthConfigFilename = path.Join(cacheDirname, "oauth.json")
+	tokenFilename = path.Join(cacheDirname, "token.json")
 
 	// Ensure the cache directory exists
 	if err := os.MkdirAll(cacheDirname, 0700); err != nil {
@@ -211,6 +216,16 @@ func getClient(ctx context.Context) (*http.Client, error) {
 
 	client := config.Client(ctx, token)
 	return client, err
+}
+
+func getCacheDirname() string {
+	dirname := os.Getenv("XDG_CACHE_HOME")
+
+	if dirname == "" {
+		dirname = getFallbackCacheDirname()
+	}
+
+	return path.Join(dirname, "blachniet.com", "AreMyPhotosUploaded")
 }
 
 const (
