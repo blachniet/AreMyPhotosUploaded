@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -152,7 +153,6 @@ func getOAuthConfig() (*oauth2.Config, error) {
 
 	config.Endpoint = google.Endpoint
 	config.Scopes = []string{photoslibrary.PhotoslibraryReadonlyScope}
-	config.RedirectURL = "urn:ietf:wg:oauth:2.0:oob"
 
 	// Save the config in the cache
 	configFile, err = os.Create(oauthConfigFilename)
@@ -161,6 +161,54 @@ func getOAuthConfig() (*oauth2.Config, error) {
 	}
 
 	return &config, json.NewEncoder(configFile).Encode(&config)
+}
+
+// getAuthCode obtains an authorization code via the loopback IP address
+// https://developers.google.com/identity/protocols/OAuth2InstalledApp#redirect-uri_loopback
+func getAuthCode(config *oauth2.Config) string {
+	// Listen on an available port
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(err)
+	}
+
+	// Acquire the port we are listening on
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	// Set the redirect URL with the port we are listening on
+	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%v/callback", port)
+
+	// Open the authorization page in a web browser
+	openURL(config.AuthCodeURL("state", oauth2.AccessTypeOffline))
+
+	codeChan := make(chan string)
+	defer close(codeChan)
+
+	// Launch a goroutine that listens on the loopback and acquires the
+	// authorization code.
+	go func() {
+		http.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+			code := r.URL.Query().Get("code")
+			if code == "" {
+				fmt.Fprintln(w, authCodeErrorPage)
+			} else {
+				fmt.Fprintln(w, authCodeSuccessPage)
+			}
+
+			codeChan <- code
+		})
+
+		http.Serve(listener, nil)
+	}()
+
+	// Wait for an authorization code from the above goroutine
+	code := <-codeChan
+
+	if code == "" {
+		log.Fatalf("Error obtaining auth code.")
+	}
+
+	return code
 }
 
 func getClient(ctx context.Context) (*http.Client, error) {
@@ -181,23 +229,7 @@ func getClient(ctx context.Context) (*http.Client, error) {
 		}
 	}
 
-	// We didn't find a token, acquire a new one
-	// -------------------------------------------
-	// Redirect user to consent page to ask for permission
-	// for the scopes specified above.
-	url := config.AuthCodeURL("state", oauth2.AccessTypeOffline)
-	fmt.Printf("1. Authorize this application: %v\n", url)
-	fmt.Printf("2. Paste the authorization code here: ")
-
-	// Use the authorization code that is pushed to the redirect
-	// URL. Exchange will do the handshake to retrieve the
-	// initial access token. The HTTP Client returned by
-	// conf.Client will refresh the token as necessary.
-	var code string
-	if _, err := fmt.Scan(&code); err != nil {
-		return nil, err
-	}
-
+	code := getAuthCode(config)
 	token, err = config.Exchange(ctx, code)
 	if err != nil {
 		return nil, err
@@ -250,6 +282,20 @@ const (
 	<table>`
 	htmlFooter = `
 	</table>
+</body>
+</html>`
+	authCodeSuccessPage = `
+<html>
+<body>
+	<h1>Success!</h1>
+	<p>You may close this window now.</p>
+</body>
+</html>`
+	authCodeErrorPage = `
+<html>
+<body>
+	<h1>Error!</h1>
+	<p>There was an error obtaining the authorization code. You may close this window now.</p>
 </body>
 </html>`
 )
